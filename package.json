@@ -30,6 +30,7 @@
     "express": "^5.2.1",
     "langchain": "^1.5.4",
     "multer": "^2.2.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "zod": "^4.4.3"
   }
 }
