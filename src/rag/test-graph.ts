@@ -14,11 +14,10 @@ async function testGraph(question: string) {
   });
 
   console.log("\n========================================");
-  console.log("RESULT");
+  console.log("FINAL ANSWER");
   console.log("========================================");
 
-  console.log("Relevant:", result.isRelevant);
-  console.log("Reason:", result.relevanceReason);
+  console.log(result.answer);
 }
 
 async function main() {

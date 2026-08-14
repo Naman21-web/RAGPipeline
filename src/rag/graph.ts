@@ -9,16 +9,18 @@ import { RAGState } from "./state.js";
 import {
   retrieveNode,
   gradeDocumentsNode,
+  generateAnswerNode,
+  rejectNode,
 } from "./nodes.js";
 
 function routeAfterGrading(
   state: typeof RAGState.State
 ) {
   if (state.isRelevant) {
-    return "relevant";
+    return "generate";
   }
 
-  return "irrelevant";
+  return "reject";
 }
 
 const workflow = new StateGraph(RAGState)
@@ -30,7 +32,20 @@ const workflow = new StateGraph(RAGState)
     gradeDocumentsNode
   )
 
-  .addEdge(START, "retrieve")
+  .addNode(
+    "generateAnswer",
+    generateAnswerNode
+  )
+
+  .addNode(
+    "reject",
+    rejectNode
+  )
+
+  .addEdge(
+    START,
+    "retrieve"
+  )
 
   .addEdge(
     "retrieve",
@@ -41,9 +56,19 @@ const workflow = new StateGraph(RAGState)
     "gradeDocuments",
     routeAfterGrading,
     {
-      relevant: END,
-      irrelevant: END,
+      generate: "generateAnswer",
+      reject: "reject",
     }
+  )
+
+  .addEdge(
+    "generateAnswer",
+    END
+  )
+
+  .addEdge(
+    "reject",
+    END
   );
 
 export const ragGraph = workflow.compile();

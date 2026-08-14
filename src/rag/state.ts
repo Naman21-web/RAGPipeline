@@ -15,4 +15,8 @@ export const RAGState = Annotation.Root({
   relevanceReason: Annotation<string>({
     default: () => "",
   }),
+
+  answer: Annotation<string>({
+    default: () => "",
+  }),
 });
