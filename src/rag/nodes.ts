@@ -11,6 +11,15 @@ const relevanceSchema = z.object({
   reason: z.string(),
 });
 
+const verificationSchema = z.object({
+  supported: z.boolean(),
+  reason: z.string(),
+});
+
+const answerVerifier = llm.withStructuredOutput(
+  verificationSchema
+);
+
 const relevanceGrader = llm.withStructuredOutput(
   relevanceSchema
 );
@@ -138,10 +147,83 @@ ${context}
   };
 }
 
+export async function verifyAnswerNode(
+  state: typeof RAGState.State
+) {
+  console.log("\n[Verify Answer]");
+
+  const context = state.documents
+    .map((doc, index) => {
+      return `
+DOCUMENT ${index + 1}
+
+${doc.pageContent}
+`;
+    })
+    .join("\n");
+
+  const prompt = `
+You are a strict factual verifier for a RAG system.
+
+Your job is to determine whether the generated answer
+is completely supported by the provided documents.
+
+IMPORTANT RULES:
+
+1. Use ONLY the provided documents.
+2. Do not use your own knowledge.
+3. Do not infer facts that are not explicitly supported.
+4. Every factual claim in the answer must be supported.
+5. If even one important factual claim is unsupported,
+   return supported=false.
+6. If the answer says something that cannot be verified
+   from the documents, return supported=false.
+
+USER QUESTION:
+${state.question}
+
+PROVIDED DOCUMENTS:
+${context}
+
+GENERATED ANSWER:
+${state.answer}
+
+Determine whether the generated answer is fully supported
+by the provided documents.
+
+Return:
+- supported=true if every factual claim is supported.
+- supported=false otherwise.
+
+Also provide a short explanation.
+`;
+
+  const result = await answerVerifier.invoke(prompt);
+
+  console.log("Supported:", result.supported);
+  console.log("Reason:", result.reason);
+
+  return {
+    answerSupported: result.supported,
+    verificationReason: result.reason,
+  };
+}
+
+export async function verificationFailureNode() {
+  console.log("\n[Verification Failed]");
+
+  return {
+    answer: "I don't know based on the provided document.",
+  };
+}
+
 export async function rejectNode() {
   console.log("\n[Reject]");
 
   return {
     answer: "I don't know based on the provided document.",
+    answerSupported: false,
+    verificationReason:
+      "The retrieved documents do not contain enough relevant information to answer the question.",
   };
 }
