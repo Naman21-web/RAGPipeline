@@ -11,6 +11,8 @@ import {
   gradeDocumentsNode,
   generateAnswerNode,
   rejectNode,
+  verifyClaimsNode,
+  verificationFailureNode,
 } from "./nodes.js";
 
 function routeAfterGrading(
@@ -21,6 +23,16 @@ function routeAfterGrading(
   }
 
   return "reject";
+}
+
+function routeAfterClaimVerification(
+  state: typeof RAGState.State
+) {
+  if (state.answerSupported) {
+    return "success";
+  }
+
+  return "failure";
 }
 
 const workflow = new StateGraph(RAGState)
@@ -38,8 +50,18 @@ const workflow = new StateGraph(RAGState)
   )
 
   .addNode(
+    "verifyClaims",
+    verifyClaimsNode
+  )
+
+  .addNode(
     "reject",
     rejectNode
+  )
+
+  .addNode(
+    "verificationFailure",
+    verificationFailureNode
   )
 
   .addEdge(
@@ -63,11 +85,25 @@ const workflow = new StateGraph(RAGState)
 
   .addEdge(
     "generateAnswer",
-    END
+    "verifyClaims"
+  )
+
+  .addConditionalEdges(
+    "verifyClaims",
+    routeAfterClaimVerification,
+    {
+      success: END,
+      failure: "verificationFailure",
+    }
   )
 
   .addEdge(
     "reject",
+    END
+  )
+
+  .addEdge(
+    "verificationFailure",
     END
   );
 

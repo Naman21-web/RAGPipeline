@@ -18,15 +18,36 @@ async function testGraph(question: string) {
   console.log("========================================");
 
   console.log(result.answer);
+
+  console.log("\n========================================");
+  console.log("VERIFICATION");
+  console.log("========================================");
+
+  console.log(
+    "Supported:",
+    result.answerSupported
+  );
+
+  console.log(
+    "Reason:",
+    result.verificationReason
+  );
 }
 
 async function main() {
+  // Clearly answerable
   await testGraph(
     "What technologies does Naman know?"
   );
 
+  // Clearly unanswerable
   await testGraph(
     "What is Naman's favorite football team?"
+  );
+
+  // Potentially dangerous inference
+  await testGraph(
+    "How many years of experience does Naman have with MongoDB?"
   );
 }
 

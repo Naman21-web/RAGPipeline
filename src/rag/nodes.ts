@@ -1,6 +1,7 @@
 import { retrieveDocuments } from "../vectorstore/retriever.js";
 import { llm } from "../llm/model.js";
 import { z } from "zod";
+import { verifyClaim } from "./verifyClaim.js";
 
 import type { Document } from "@langchain/core/documents";
 
@@ -15,6 +16,21 @@ const verificationSchema = z.object({
   supported: z.boolean(),
   reason: z.string(),
 });
+
+const answerSchema = z.object({
+  answer: z.string(),
+
+  claims: z.array(
+    z.object({
+      claim: z.string(),
+      evidence: z.string(),
+    })
+  ),
+});
+
+const answerGenerator = llm.withStructuredOutput(
+  answerSchema
+);
 
 const answerVerifier = llm.withStructuredOutput(
   verificationSchema
@@ -108,104 +124,135 @@ ${doc.pageContent}
     .join("\n");
 
   const prompt = `
-You are a document question-answering assistant.
+You are a document-grounded question answering assistant.
 
-Your job is to answer the user's question using ONLY the
-information contained in the provided documents.
+Answer the user's question using ONLY the provided documents.
 
-STRICT RULES:
+For every factual statement in your answer, create an
+individual claim.
 
-1. Use only the provided documents.
-2. Do not use your own knowledge.
-3. Do not make assumptions.
-4. Do not invent facts.
-5. Every factual statement in your answer must be supported
-   by the provided documents.
-6. If the documents do not contain enough information to
-   answer the question, respond exactly with:
+IMPORTANT:
 
-I don't know based on the provided document.
+Each claim must contain exactly ONE independently
+verifiable factual statement.
 
-User question:
+Do NOT combine multiple facts into one claim.
+
+BAD:
+"Naman knows Node.js, MongoDB and PostgreSQL."
+
+GOOD:
+"Naman knows Node.js."
+"Naman knows MongoDB."
+"Naman knows PostgreSQL."
+
+For every claim, provide supporting evidence from the
+documents.
+
+Do not use outside knowledge.
+
+Do not invent information.
+
+QUESTION:
 ${state.question}
 
-Documents:
+DOCUMENTS:
 ${context}
 `;
 
-  const response = await llm.invoke(prompt);
+  const result = await answerGenerator.invoke(prompt);
 
-  const answer =
-    typeof response.content === "string"
-      ? response.content
-      : JSON.stringify(response.content);
+  console.log("Answer:", result.answer);
 
-  console.log("Answer:", answer);
+  console.log("\nClaims:");
+
+  result.claims.forEach((claim, index) => {
+    console.log(`Claim ${index + 1}:`);
+    console.log("  Claim:", claim.claim);
+    console.log("  Evidence:", claim.evidence);
+  });
 
   return {
-    answer,
+    answer: result.answer,
+    claims: result.claims,
   };
 }
 
-export async function verifyAnswerNode(
+export async function verifyClaimsNode(
   state: typeof RAGState.State
 ) {
-  console.log("\n[Verify Answer]");
+  console.log("\n[Verify Claims]");
 
-  const context = state.documents
-    .map((doc, index) => {
-      return `
-DOCUMENT ${index + 1}
+  if (!state.claims || state.claims.length === 0) {
+    console.log("No claims to verify.");
 
-${doc.pageContent}
-`;
-    })
-    .join("\n");
+    return {
+      answerSupported: false,
+      verificationReason:
+        "The generated answer did not contain verifiable claims.",
+    };
+  }
 
-  const prompt = `
-You are a strict factual verifier for a RAG system.
+  const documentContext = state.documents
+        .map((doc, index) => {
+            return `
+        DOCUMENT ${index + 1}
 
-Your job is to determine whether the generated answer
-is completely supported by the provided documents.
+        ${doc.pageContent}
+        `;
+        })
+        .join("\n");
 
-IMPORTANT RULES:
+  const results = [];
 
-1. Use ONLY the provided documents.
-2. Do not use your own knowledge.
-3. Do not infer facts that are not explicitly supported.
-4. Every factual claim in the answer must be supported.
-5. If even one important factual claim is unsupported,
-   return supported=false.
-6. If the answer says something that cannot be verified
-   from the documents, return supported=false.
+  for (const [index, claim] of state.claims.entries()) {
+    console.log(`\nVerifying Claim ${index + 1}`);
+    console.log("Claim:", claim.claim);
+    console.log("Evidence:", claim.evidence);
 
-USER QUESTION:
-${state.question}
+    
 
-PROVIDED DOCUMENTS:
-${context}
+    const result = await verifyClaim(
+        llm,
+        state.question,
+        claim.claim,
+        claim.evidence,
+        documentContext
+    );
 
-GENERATED ANSWER:
-${state.answer}
+    console.log("Supported:", result.supported);
+    console.log("Reason:", result.reason);
 
-Determine whether the generated answer is fully supported
-by the provided documents.
+    results.push({
+      claim: claim.claim,
+      supported: result.supported,
+      reason: result.reason,
+    });
+  }
 
-Return:
-- supported=true if every factual claim is supported.
-- supported=false otherwise.
+  const allSupported = results.every(
+    result => result.supported
+  );
 
-Also provide a short explanation.
-`;
+  const failedClaims = results.filter(
+    result => !result.supported
+  );
 
-  const result = await answerVerifier.invoke(prompt);
+  let verificationReason = "All claims are supported.";
 
-  console.log("Supported:", result.supported);
-  console.log("Reason:", result.reason);
+  if (failedClaims.length > 0) {
+    verificationReason =
+      failedClaims
+        .map(
+          result =>
+            `${result.claim}: ${result.reason}`
+        )
+        .join("\n");
+  }
 
   return {
-    answerSupported: result.supported,
-    verificationReason: result.reason,
+    answerSupported: allSupported,
+    verificationReason,
   };
 }
 
@@ -214,6 +261,9 @@ export async function verificationFailureNode() {
 
   return {
     answer: "I don't know based on the provided document.",
+    answerSupported: false,
+    verificationReason:
+      "The generated answer contains information that is not sufficiently supported by the provided document.",
   };
 }
 

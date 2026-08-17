@@ -19,4 +19,21 @@ export const RAGState = Annotation.Root({
   answer: Annotation<string>({
     default: () => "",
   }),
+
+  claims: Annotation<
+    {
+      claim: string;
+      evidence: string;
+    }[]
+  >({
+    default: () => [],
+  }),
+
+  answerSupported: Annotation<boolean>({
+    default: () => false,
+  }),
+
+  verificationReason: Annotation<string>({
+    default: () => "",
+  }),
 });
