@@ -6,7 +6,7 @@ export const embeddings = new GoogleGenerativeAIEmbeddings({
 });
 
 export const llm = new ChatGoogleGenerativeAI({
-  model: "gemini-3.6-flash",
+  model: "gemini-3.1-flash-lite",
   apiKey: process.env.GOOGLE_API_KEY,
   temperature: 0,
 });

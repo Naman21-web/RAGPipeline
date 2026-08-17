@@ -8,103 +8,87 @@ import { RAGState } from "./state.js";
 
 import {
   retrieveNode,
-  gradeDocumentsNode,
+//   gradeDocumentsNode,
   generateAnswerNode,
+  verifyAnswerNode,
   rejectNode,
-  verifyClaimsNode,
-  verificationFailureNode,
+//   verifyClaimsNode,
+//   verificationFailureNode,
 } from "./nodes.js";
 
-function routeAfterGrading(
+// function routeAfterGrading(
+//   state: typeof RAGState.State
+// ) {
+//   if (state.isRelevant) {
+//     return "generate";
+//   }
+
+//   return "reject";
+// }
+
+// function routeAfterClaimVerification(
+//   state: typeof RAGState.State
+// ) {
+//   if (state.answerSupported) {
+//     return "success";
+//   }
+
+//   return "failure";
+// }
+
+function shouldRejectAfterGeneration(
   state: typeof RAGState.State
 ) {
-  if (state.isRelevant) {
-    return "generate";
+  if (
+    state.answer
+      .toLowerCase()
+      .includes("i don't know")
+  ) {
+    return "reject";
+  }
+
+  return "verify";
+}
+
+function shouldAcceptAnswer(
+  state: typeof RAGState.State
+) {
+  if (state.answerSupported === true) {
+    return "answer";
   }
 
   return "reject";
 }
 
-function routeAfterClaimVerification(
-  state: typeof RAGState.State
-) {
-  if (state.answerSupported) {
-    return "success";
-  }
-
-  return "failure";
-}
-
 const workflow = new StateGraph(RAGState)
 
   .addNode("retrieve", retrieveNode)
+  .addNode("generate", generateAnswerNode)
+  .addNode("verify", verifyAnswerNode)
+  .addNode("reject", rejectNode)
 
-  .addNode(
-    "gradeDocuments",
-    gradeDocumentsNode
-  )
+  .addEdge(START, "retrieve")
 
-  .addNode(
-    "generateAnswer",
-    generateAnswerNode
-  )
-
-  .addNode(
-    "verifyClaims",
-    verifyClaimsNode
-  )
-
-  .addNode(
-    "reject",
-    rejectNode
-  )
-
-  .addNode(
-    "verificationFailure",
-    verificationFailureNode
-  )
-
-  .addEdge(
-    START,
-    "retrieve"
-  )
-
-  .addEdge(
-    "retrieve",
-    "gradeDocuments"
-  )
+  .addEdge("retrieve", "generate")
 
   .addConditionalEdges(
-    "gradeDocuments",
-    routeAfterGrading,
+    "generate",
+    shouldRejectAfterGeneration,
     {
-      generate: "generateAnswer",
+      verify: "verify",
       reject: "reject",
     }
   )
 
-  .addEdge(
-    "generateAnswer",
-    "verifyClaims"
-  )
-
   .addConditionalEdges(
-    "verifyClaims",
-    routeAfterClaimVerification,
+    "verify",
+    shouldAcceptAnswer,
     {
-      success: END,
-      failure: "verificationFailure",
+      answer: END,
+      reject: "reject",
     }
   )
 
-  .addEdge(
-    "reject",
-    END
-  )
-
-  .addEdge(
-    "verificationFailure",
-    END
-  );
+  .addEdge("reject", END);
 
 export const ragGraph = workflow.compile();
